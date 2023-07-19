@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
 )
 
 type quiz struct {
@@ -14,27 +16,44 @@ type quiz struct {
 
 func main() {
 
-	if len(os.Args) != 2 {
-		fmt.Println(`USAGE: go run main.go <CSV_FILE>`)
-		fmt.Println(os.Args)
-		return
-	}
+	filename := flag.String("csv", "problems.csv", "CSV File consist of quizzes.")
+	timeLimit := flag.Int("limit", 30, "Time limit for the quiz.")
+	flag.Parse()
 
-	qs, err := readCSV(os.Args[1])
+	qs, err := readCSV(*filename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	score := 0
+	startQuiz(qs, *timeLimit)
+}
 
+func startQuiz(qs []quiz, timeLimit int) {
+
+	timer := time.NewTimer(time.Duration(timeLimit) * time.Second)
+
+	score := 0
 	for i, q := range qs {
-		fmt.Printf("Problem #%d: %s = \n", i+1, q.challenge)
-		var answer string
-		fmt.Scanf("%s\n", &answer)
-		if q.response == answer {
-			score++
+		fmt.Printf("Problem #%d: %s = ", i+1, q.challenge)
+
+		ansC := make(chan string)
+
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer)
+			ansC <- answer
+		}()
+
+		select {
+		case <-timer.C:
+			fmt.Printf("\nYou scored %d out of %d", score, len(qs))
+			return
+		case ans := <-ansC:
+			if ans == q.response {
+				score++
+			}
 		}
+
 	}
-	fmt.Printf("You scored %d out of %d", score, len(qs))
 }
 
 func readCSV(filename string) ([]quiz, error) {
